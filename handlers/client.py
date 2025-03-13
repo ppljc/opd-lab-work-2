@@ -10,7 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 # Локальные модули
 from create_bot import db
 from utilities.logger import logger
-from data_base.operations import doctors_get, doctor_areas_get
+from data_base.operations import doctors_get, doctor_areas_get, dates_get, appointment_add
 
 
 # Переменные
@@ -21,7 +21,10 @@ router = Router(name='client')
 class FSMAppointment(StatesGroup):
 	full_name = State()
 	doctor_area = State()
+	doctor_area_name = State()
 	doctor_username = State()
+	doctor_full_name = State()
+	builders_date = State()
 	date = State()
 	time = State()
 	first_message = State()
@@ -154,18 +157,20 @@ async def callback_appointment_doctor_area(query: CallbackQuery, state: FSMConte
 		full_name = data['full_name']
 
 		await query.answer()
-		data = query.data.split('|')
-		doctor_area = data[1]
+		doctor_area = query.data.split('|')[1]
 
-		reply_markup = await doctors_get(db=db, doctor_area=doctor_area)
+		reply_markup, doctor_area_name = await doctors_get(db=db, doctor_area=doctor_area)
 
 		await query.message.edit_text(
-			text=f'👨‍⚕️ {full_name}, выберите врача по направлению {doctor_area}, к которому хотите попасть на приём:',
+			text=f'👨‍⚕️ {full_name}, выберите врача по направлению «{doctor_area_name}», к которому хотите попасть на приём:',
 			reply_markup=reply_markup
 		)
 
 		await state.set_state(FSMAppointment.doctor_username)
-		await state.update_data(doctor_area=doctor_area)
+		await state.update_data(
+			doctor_area=doctor_area,
+			doctor_area_name=doctor_area_name
+		)
 
 		logger.info(f'USER={query.from_user.id}, MESSAGE="doctor_area={doctor_area}"')
 	except Exception as e:
@@ -178,16 +183,97 @@ async def callback_appointment_doctor_username(query: CallbackQuery, state: FSMC
 		data = await state.get_data()
 		full_name = data['full_name']
 		doctor_area = data['doctor_area']
+		doctor_area_name = data['doctor_area_name']
 
 		await query.answer()
-		data = query.data.split('|')
-		doctor_username = data[1]
+		doctor_username = query.data.split('|')[1]
 
+		reply_markup, builders_date, doctor_full_name = await dates_get(db=db, doctor_area=doctor_area, doctor_username=doctor_username)
 
+		await query.message.edit_text(
+			text=f'🗓️ {full_name}, на какую дату вы хотите записаться к врачу «{doctor_full_name}» по направлению «{doctor_area_name}»:',
+			reply_markup=reply_markup
+		)
 
-		await state.set_state(FSMAppointment.doctor_username)
-		await state.update_data(doctor_username=doctor_username)
+		await state.set_state(FSMAppointment.date)
+		await state.update_data(
+			doctor_username=doctor_username,
+			doctor_full_name=doctor_full_name,
+			builders_date=builders_date
+		)
 
 		logger.info(f'USER={query.from_user.id}, MESSAGE="doctor_username={doctor_username}"')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+@router.callback_query(F.data.startswith('appointment_date'))
+async def callback_appointment_date(query: CallbackQuery, state: FSMContext):
+	try:
+		data = await state.get_data()
+		full_name = data['full_name']
+		doctor_full_name = data['doctor_full_name']
+		doctor_area_name = data['doctor_area_name']
+		builders_date = data['builders_date']
+
+		await query.answer()
+		date = query.data.split('|')[1]
+
+		await query.message.edit_text(
+			text=f'⌚ {full_name}, на какое время вы хотите записаться к врачу «{doctor_full_name}» по направлению «{doctor_area_name}» на {date}:',
+			reply_markup=builders_date[date]
+		)
+
+		await state.set_state(FSMAppointment.time)
+		await state.update_data(date=date)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE="date={query.data}"')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+@router.callback_query(F.data.startswith('appointment_time'))
+async def callback_appointment_time(query: CallbackQuery, state: FSMContext):
+	try:
+		data = await state.get_data()
+		full_name = data['full_name']
+		doctor_area = data['doctor_area']
+		doctor_area_name = data['doctor_area_name']
+		doctor_username = data['doctor_username']
+		doctor_full_name = data['doctor_full_name']
+
+		await query.answer()
+		date = query.data.split('|')[1]
+		time = query.data.split('|')[2]
+
+		await appointment_add(
+			db=db,
+			user_id=query.from_user.id,
+			date=date,
+			time=time,
+			doctor_area=doctor_area,
+			doctor_username=doctor_username
+		)
+
+		builder = InlineKeyboardBuilder()
+		builder.button(text='Назад ⬅️', callback_data='menu_main')
+
+		await query.message.edit_text(
+			text=f'✅ {full_name}, вы успешно записаны к «{doctor_full_name}» на направление «{doctor_area_name}» на {date} в {time}!',
+			reply_markup=builder.as_markup()
+		)
+
+		await state.clear()
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE="time={time}"')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+async def callback_appointment_list(query: CallbackQuery):
+	try:
+
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
 	except Exception as e:
 		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')

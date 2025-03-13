@@ -31,7 +31,7 @@ class SQLiteDB:
 			await self.connection.execute(
 				'''
 					CREATE TABLE IF NOT EXISTS doctor_areas 
-					(doctor_area TEXT)
+					(doctor_area TEXT, doctor_area_name TEXT)
 				'''
 			)
 			await self.connection.execute(
