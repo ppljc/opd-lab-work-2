@@ -19,7 +19,19 @@ class SQLiteDB:
 				'''
 					CREATE TABLE IF NOT EXISTS users 
 					(date DATE, user_id INTEGER UNIQUE, first_name TEXT, last_name TEXT, 
-					username TEXT UNIQUE, appointments TEXT)
+					username TEXT UNIQUE)
+				'''
+			)
+			await self.connection.execute(
+				'''
+					CREATE TABLE IF NOT EXISTS appointments 
+					(user_id INTEGER, date DATE, time TEXT, doctor_area TEXT, doctor_username TEXT)
+				'''
+			)
+			await self.connection.execute(
+				'''
+					CREATE TABLE IF NOT EXISTS doctor_areas 
+					(doctor_area TEXT)
 				'''
 			)
 			await self.connection.execute(

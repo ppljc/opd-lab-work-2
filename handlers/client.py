@@ -10,7 +10,7 @@ from aiogram.fsm.state import State, StatesGroup
 # Локальные модули
 from create_bot import db
 from utilities.logger import logger
-from data_base.operations import doctors_get
+from data_base.operations import doctors_get, doctor_areas_get
 
 
 # Переменные
@@ -20,8 +20,8 @@ router = Router(name='client')
 # Классы
 class FSMAppointment(StatesGroup):
 	full_name = State()
-	full_name_confirm = State()
-	doctor = State()
+	doctor_area = State()
+	doctor_username = State()
 	date = State()
 	time = State()
 	first_message = State()
@@ -109,21 +109,14 @@ async def message_appointment_full_name(message: Message, state: FSMContext):
 
 		await message.delete()
 
-		builder = InlineKeyboardBuilder()
-		builder.button(text='Да ✅', callback_data='appointment_full_name|1')
-		builder.button(text='Нет ❌', callback_data='appointment_full_name|0')
-		builder.button(text='Назад ⬅️', callback_data='add_appointment')
-		builder.adjust(2, 1)
+		reply_markup = await doctor_areas_get(db=db)
 
 		await first_message.edit_text(
-			text=(
-				f'<b>{message.text}</b>\n\n'
-				f'🤔 Это верно?'
-			),
-			reply_markup=builder.as_markup()
+			text=f'👨‍⚕️ {message.text}, выберите направление, на которое хотите попасть на приём:',
+			reply_markup=reply_markup
 		)
 
-		await state.set_state(FSMAppointment.full_name_confirm)
+		await state.set_state(FSMAppointment.doctor_area)
 		await state.update_data(full_name=message.text)
 
 		logger.info(f'USER={message.from_user.id}, MESSAGE="full_name={message.text}"')
@@ -131,25 +124,70 @@ async def message_appointment_full_name(message: Message, state: FSMContext):
 		logger.error(f'USER={message.from_user.id}, MESSAGE="{e}"')
 
 
-@router.callback_query(F.data.startswith('appointment_full_name'))
-async def callback_appointment_full_name_confirm(query: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data == 'appointment_full_name')
+async def callback_appointment_full_name(query: CallbackQuery, state: FSMContext):
 	try:
+		data = await state.get_data()
+		first_message = data['first_message']
+		full_name = data['full_name']
+
+		await query.answer()
+
+		reply_markup = await doctor_areas_get(db=db)
+
+		await first_message.edit_text(
+			text=f'👨‍⚕️ {full_name}, выберите направление, на которое хотите попасть на приём:',
+			reply_markup=reply_markup
+		)
+
+		await state.set_state(FSMAppointment.doctor_area)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+@router.callback_query(F.data.startswith('appointment_doctor_area'))
+async def callback_appointment_doctor_area(query: CallbackQuery, state: FSMContext):
+	try:
+		data = await state.get_data()
+		full_name = data['full_name']
+
 		await query.answer()
 		data = query.data.split('|')
-		confirm = int(data[1])
+		doctor_area = data[1]
 
-		if confirm:
-			reply_markup = await doctors_get(db=db)
+		reply_markup = await doctors_get(db=db, doctor_area=doctor_area)
 
-			await query.message.edit_text(
-				text='👨‍⚕️ Выберите врача, к которому хотите попасть на приём:',
-				reply_markup=reply_markup
-			)
+		await query.message.edit_text(
+			text=f'👨‍⚕️ {full_name}, выберите врача по направлению {doctor_area}, к которому хотите попасть на приём:',
+			reply_markup=reply_markup
+		)
 
-			await state.set_state(FSMAppointment.date)
-		else:
+		await state.set_state(FSMAppointment.doctor_username)
+		await state.update_data(doctor_area=doctor_area)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE="doctor_area={doctor_area}"')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
 
 
-		logger.info(f'USER={query.from_user.id}, MESSAGE="confirm={}"')
+@router.callback_query(F.data.startswith('appointment_doctor_username'))
+async def callback_appointment_doctor_username(query: CallbackQuery, state: FSMContext):
+	try:
+		data = await state.get_data()
+		full_name = data['full_name']
+		doctor_area = data['doctor_area']
+
+		await query.answer()
+		data = query.data.split('|')
+		doctor_username = data[1]
+
+
+
+		await state.set_state(FSMAppointment.doctor_username)
+		await state.update_data(doctor_username=doctor_username)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE="doctor_username={doctor_username}"')
 	except Exception as e:
 		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
