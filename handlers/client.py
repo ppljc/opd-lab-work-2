@@ -10,7 +10,10 @@ from aiogram.fsm.state import State, StatesGroup
 # Локальные модули
 from create_bot import db
 from utilities.logger import logger
-from data_base.operations import doctors_get, doctor_areas_get, dates_get, appointment_add
+from data_base.operations import (
+	doctors_get, doctor_areas_get, dates_get, appointment_add, appointments_get, appointment_get,
+	doctor_area_name_get, appointment_remove
+)
 
 
 # Переменные
@@ -270,9 +273,82 @@ async def callback_appointment_time(query: CallbackQuery, state: FSMContext):
 		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
 
 
+@router.callback_query(F.data == 'list_appointments')
 async def callback_appointment_list(query: CallbackQuery):
 	try:
+		await query.answer()
 
+		text, reply_markup = await appointments_get(db=db, user_id=query.from_user.id)
+
+		await query.message.edit_text(
+			text=text,
+			reply_markup=reply_markup
+		)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+@router.callback_query(F.data.startswith('edit_appointment'))
+async def callback_appointment_edit(query: CallbackQuery):
+	try:
+		await query.answer()
+		date = query.data.split('|')[1]
+		time = query.data.split('|')[2]
+		doctor_area = query.data.split('|')[3]
+		doctor_username = query.data.split('|')[4]
+
+		text, reply_markup = await appointment_get(db=db, date=date, time=time, doctor_area=doctor_area, doctor_username=doctor_username)
+
+		await query.message.edit_text(
+			text=text,
+			reply_markup=reply_markup
+		)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+@router.callback_query(F.data.startswith('remove_appointment'))
+async def callback_appointment_remove(query: CallbackQuery):
+	try:
+		await query.answer()
+		date = query.data.split('|')[1]
+		time = query.data.split('|')[2]
+		doctor_area = query.data.split('|')[3]
+		doctor_username = query.data.split('|')[4]
+
+		doctor_area_name = await doctor_area_name_get(db=db, doctor_area=doctor_area)
+
+		builder = InlineKeyboardBuilder()
+		builder.button(text='Да 🗑️', callback_data=f'confirm_remove_appointment|{date}|{time}|{doctor_area}|{doctor_username}')
+		builder.button(text='Назад ⬅️', callback_data=f'edit_appointment|{date}|{time}|{doctor_area}|{doctor_username}')
+		builder.adjust(2)
+
+		await query.message.edit_text(
+			text=f'❔ Вы уверены, что хотите удалить запись на {date} в {time} к {doctor_area_name}?',
+			reply_markup=builder.as_markup()
+		)
+
+		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
+	except Exception as e:
+		logger.error(f'USER={query.from_user.id}, MESSAGE="{e}"')
+
+
+@router.callback_query(F.data.startswith('confirm_remove_appointment'))
+async def callback_appointment_confirm_remove(query: CallbackQuery):
+	try:
+		await query.answer()
+		date = query.data.split('|')[1]
+		time = query.data.split('|')[2]
+		doctor_area = query.data.split('|')[3]
+		doctor_username = query.data.split('|')[4]
+
+		await appointment_remove(db=db, user_id=query.from_user.id, date=date, time=time, doctor_area=doctor_area, doctor_username=doctor_username)
+
+		await callback_appointment_list(query=query)
 
 		logger.info(f'USER={query.from_user.id}, MESSAGE=""')
 	except Exception as e:

@@ -26,6 +26,16 @@ async def user_add(db: SQLiteDB, user):
 	)
 
 
+async def doctor_area_name_get(db: SQLiteDB, doctor_area):
+	doctor_area_name = await db.select(
+		table='doctor_areas',
+		what=('doctor_area_name',),
+		where={'doctor_area': doctor_area}
+	)
+
+	return doctor_area_name[0][0]
+
+
 async def doctor_areas_get(db: SQLiteDB):
 	doctor_areas = await db.select(
 		table='doctor_areas'
@@ -48,11 +58,7 @@ async def doctors_get(db: SQLiteDB, doctor_area):
 		where={'doctor_area': doctor_area}
 	)
 
-	doctor_area_name = await db.select(
-		table='doctor_areas',
-		what=('doctor_area_name',),
-		where={'doctor_area': doctor_area}
-	)
+	doctor_area_name = await doctor_area_name_get(db=db, doctor_area=doctor_area)
 
 	builder = InlineKeyboardBuilder()
 
@@ -62,7 +68,7 @@ async def doctors_get(db: SQLiteDB, doctor_area):
 	builder.button(text='Назад ⬅️', callback_data='appointment_full_name')
 	builder.adjust(1, repeat=True)
 
-	return builder.as_markup(), doctor_area_name[0][0]
+	return builder.as_markup(), doctor_area_name
 
 
 async def dates_get(db: SQLiteDB, doctor_area, doctor_username):
@@ -139,7 +145,7 @@ async def dates_get(db: SQLiteDB, doctor_area, doctor_username):
 		builders_date[date.strftime("%d.%m.%Y")] = builder_date.as_markup()
 
 	builder.button(text='Назад ⬅️', callback_data=f'appointment_doctor_area|{doctor_area}')
-	builder.adjust(3, repeat=True)
+	builder.adjust(2, repeat=True)
 
 	return builder.as_markup(), builders_date, doctor_full_name[0][0]
 
@@ -163,15 +169,48 @@ async def appointments_get(db: SQLiteDB, user_id):
 		where={'user_id': user_id}
 	)
 
-	text = 'У вас пока нет записей.'
+	text = '📄 Вот список ваших записей:'
 	builder = InlineKeyboardBuilder()
 
 	for appointment in appointments:
-		doctor_area_name = await db.select(
-			table='doctor_areas',
-			where={'doctor_area': appointment[3]}
-		)
+		doctor_area_name = await doctor_area_name_get(db=db, doctor_area=appointment[3])
 
-		builder.button(text=f'{appointment[1]} {appointment[2]} {doctor_area_name[0][1]}', callback_data=f'appointment_current|{appointment[0]}')
+		builder.button(text=f'{appointment[1]} {appointment[2]} {doctor_area_name}', callback_data=f'edit_appointment|{appointment[1]}|{appointment[2]}|{appointment[3]}|{appointment[4]}')
 
-	return appointments
+	if not appointments:
+		text = '📎 У вас пока нет записей.'
+
+	builder.button(text='Назад ⬅️', callback_data='menu_main')
+	builder.adjust(1, repeat=True)
+
+	return text, builder.as_markup()
+
+
+async def appointment_get(db: SQLiteDB, date, time, doctor_area, doctor_username):
+	doctor_area_name = await doctor_area_name_get(db=db, doctor_area=doctor_area)
+
+	doctor_full_name = await db.select(
+		table='doctors',
+		what=('doctor_full_name',),
+		where={'doctor_username': doctor_username}
+	)
+
+	text = (
+		f'Ваша запись на {date} {time}:\n\n'
+		f'Направление: {doctor_area_name}\n'
+		f'Доктор: {doctor_full_name[0][0]}'
+	)
+
+	builder = InlineKeyboardBuilder()
+	builder.button(text='Отменить ❌', callback_data=f'remove_appointment|{date}|{time}|{doctor_area}|{doctor_username}')
+	builder.button(text='Назад ⬅️', callback_data=f'list_appointments')
+	builder.adjust(2)
+
+	return text, builder.as_markup()
+
+
+async def appointment_remove(db: SQLiteDB, user_id, date, time, doctor_area, doctor_username):
+	await db.remove(
+		table='appointments',
+		where={'user_id': user_id, 'date': date, 'time': time, 'doctor_area': doctor_area, 'doctor_username': doctor_username}
+	)
