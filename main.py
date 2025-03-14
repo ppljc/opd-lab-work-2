@@ -10,7 +10,6 @@ import platform
 from create_bot import bot, dp, db
 from handlers import client
 from utilities.logger import logger
-from utilities.values import read_values
 from utilities.middlewares import StandardMiddleware
 
 
@@ -30,8 +29,6 @@ async def on_startup():
 		logger.error(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="database NOT started"')
 
 	logger.info(f'BOT_NAME="{bot_user.full_name}", BOT_USERNAME="{bot_user.username}", MESSAGE="up and running..."')
-
-	await read_values(file='admins')
 
 
 async def on_shutdown():
